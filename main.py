@@ -58,7 +58,7 @@ def load_mode():
                     continue
                 key, _, value = line.partition("=")
                 properties[key.strip().lower()] = value.strip().lower()
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         pass
     return properties.get("mode", "online")
 
@@ -90,7 +90,6 @@ def fetch_versions():
         except (urllib.error.URLError, OSError):
             show_error("Unable to fetch Chrome version data. Check your internet connection and try again.")
             sys.exit(1)
-        save_raw_data(raw)
 
     try:
         data = json.loads(raw)
@@ -99,6 +98,9 @@ def fetch_versions():
         source = "cache file" if offline else "server"
         show_error(f"Received unexpected data from the {source}.")
         sys.exit(1)
+
+    if not offline:
+        save_raw_data(raw)
 
     records = []
     for entry in milestones.values():
@@ -122,7 +124,7 @@ def fetch_versions():
         if not chrome_map:
             continue
 
-        record = {"version": version, "downloads": {"chrome": chrome_map}}
+        record = {"version": version, "milestone": milestone, "downloads": {"chrome": chrome_map}}
         chromedriver_map = {
             d["platform"]: d["url"]
             for d in downloads.get("chromedriver") or []
@@ -138,7 +140,7 @@ def fetch_versions():
 
 def find_by_milestone(records, milestone):
     for rec in records:
-        if int(rec["version"].split(".")[0]) == milestone:
+        if rec["milestone"] == milestone:
             return rec
     return None
 
@@ -238,6 +240,18 @@ def show_result_screen(rec, type_key, platform):
     return input("Select an option: ").strip().lower()
 
 
+def handle_nav_choice(choice, stack):
+    if choice == "q":
+        return "quit"
+    if choice == "b":
+        stack.pop()
+        return "handled"
+    if choice == "m":
+        stack[:] = [("LIST", {"page": 1})]
+        return "handled"
+    return None
+
+
 def run():
     choice = show_welcome()
     if choice == "q":
@@ -282,13 +296,12 @@ def run():
         elif state == "TYPE":
             rec = ctx["version"]
             choice, options = show_type_screen(rec)
+            nav = handle_nav_choice(choice, stack)
 
-            if choice == "q":
+            if nav == "quit":
                 break
-            elif choice == "b":
-                stack.pop()
-            elif choice == "m":
-                stack[:] = [("LIST", {"page": 1})]
+            elif nav == "handled":
+                pass
             elif choice.isdigit() and 1 <= int(choice) <= len(options):
                 type_key = options[int(choice) - 1]
                 stack.append(("PLATFORM", {**ctx, "type": type_key}))
@@ -299,13 +312,12 @@ def run():
             rec = ctx["version"]
             type_key = ctx["type"]
             choice, platforms = show_platform_screen(rec, type_key)
+            nav = handle_nav_choice(choice, stack)
 
-            if choice == "q":
+            if nav == "quit":
                 break
-            elif choice == "b":
-                stack.pop()
-            elif choice == "m":
-                stack[:] = [("LIST", {"page": 1})]
+            elif nav == "handled":
+                pass
             elif choice.isdigit() and 1 <= int(choice) <= len(platforms):
                 platform = platforms[int(choice) - 1]
                 stack.append(("RESULT", {**ctx, "platform": platform}))
@@ -314,13 +326,12 @@ def run():
 
         elif state == "RESULT":
             choice = show_result_screen(ctx["version"], ctx["type"], ctx["platform"])
+            nav = handle_nav_choice(choice, stack)
 
-            if choice == "q":
+            if nav == "quit":
                 break
-            elif choice == "b":
-                stack.pop()
-            elif choice == "m":
-                stack[:] = [("LIST", {"page": 1})]
+            elif nav == "handled":
+                pass
             else:
                 show_error(f"'{choice}' is not a valid option. Please choose from the list above.")
 
