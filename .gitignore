@@ -1,0 +1,11 @@
+# Build artifacts
+chrome_version_browser/build/
+chrome_version_browser/dist/
+chrome_version_browser/*.spec
+
+# Runtime-generated cache
+# chrome_version_browser/app_data/
+
+# Python
+__pycache__/
+*.pyc
